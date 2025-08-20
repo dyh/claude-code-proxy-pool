@@ -1,12 +1,22 @@
 import os
 import sys
+import itertools
 
 # Configuration
 class Config:
     def __init__(self):
-        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
-        if not self.openai_api_key:
+        # Support for multiple API keys (comma-separated)
+        openai_api_keys = os.environ.get("OPENAI_API_KEY", "")
+        if not openai_api_keys:
             raise ValueError("OPENAI_API_KEY not found in environment variables")
+        
+        # Split keys by comma and remove whitespace
+        self.openai_api_keys = [key.strip() for key in openai_api_keys.split(",") if key.strip()]
+        if not self.openai_api_keys:
+            raise ValueError("No valid OPENAI_API_KEY found in environment variables")
+        
+        # Create a round-robin iterator for the API keys
+        self.api_key_cycle = itertools.cycle(self.openai_api_keys)
         
         # Add Anthropic API key for client validation
         self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -30,12 +40,17 @@ class Config:
         self.middle_model = os.environ.get("MIDDLE_MODEL", self.big_model)
         self.small_model = os.environ.get("SMALL_MODEL", "gpt-4o-mini")
         
-    def validate_api_key(self):
+    def get_next_api_key(self):
+        """Get the next API key in round-robin fashion"""
+        return next(self.api_key_cycle)
+        
+    def validate_api_key(self, api_key=None):
         """Basic API key validation"""
-        if not self.openai_api_key:
+        key_to_validate = api_key or self.openai_api_keys[0]
+        if not key_to_validate:
             return False
         # Basic format check for OpenAI API keys
-        if not self.openai_api_key.startswith('sk-'):
+        if not key_to_validate.startswith('sk-'):
             return False
         return True
         

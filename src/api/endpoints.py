@@ -17,12 +17,16 @@ from src.core.model_manager import model_manager
 
 router = APIRouter()
 
-openai_client = OpenAIClient(
-    config.openai_api_key,
-    config.openai_base_url,
-    config.request_timeout,
-    api_version=config.azure_api_version,
-)
+# Create a client factory to generate clients with round-robin API keys
+def get_openai_client():
+    """Get an OpenAI client with the next API key in round-robin fashion"""
+    api_key = config.get_next_api_key()
+    return OpenAIClient(
+        api_key,
+        config.openai_base_url,
+        config.request_timeout,
+        api_version=config.azure_api_version,
+    )
 
 async def validate_api_key(x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
     """Validate the client's API key from either x-api-key header or Authorization header."""
@@ -66,7 +70,9 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
         if request.stream:
             # Streaming response - wrap in error handling
             try:
-                openai_stream = openai_client.create_chat_completion_stream(
+                # Get a client with the next API key in round-robin fashion
+                client = get_openai_client()
+                openai_stream = client.create_chat_completion_stream(
                     openai_request, request_id
                 )
                 return StreamingResponse(
@@ -75,7 +81,7 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
                         request,
                         logger,
                         http_request,
-                        openai_client,
+                        client,
                         request_id,
                     ),
                     media_type="text/event-stream",
@@ -92,7 +98,14 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
                 import traceback
 
                 logger.error(traceback.format_exc())
-                error_message = openai_client.classify_openai_error(e.detail)
+                # Use a temporary client to classify the error
+                temp_client = OpenAIClient(
+                    config.openai_api_keys[0],
+                    config.openai_base_url,
+                    config.request_timeout,
+                    api_version=config.azure_api_version,
+                )
+                error_message = temp_client.classify_openai_error(e.detail)
                 error_response = {
                     "type": "error",
                     "error": {"type": "api_error", "message": error_message},
@@ -100,7 +113,9 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
                 return JSONResponse(status_code=e.status_code, content=error_response)
         else:
             # Non-streaming response
-            openai_response = await openai_client.create_chat_completion(
+            # Get a client with the next API key in round-robin fashion
+            client = get_openai_client()
+            openai_response = await client.create_chat_completion(
                 openai_request, request_id
             )
             claude_response = convert_openai_to_claude_response(
@@ -114,7 +129,14 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
 
         logger.error(f"Unexpected error processing request: {e}")
         logger.error(traceback.format_exc())
-        error_message = openai_client.classify_openai_error(str(e))
+        # Use a temporary client to classify the error
+        temp_client = OpenAIClient(
+            config.openai_api_keys[0],
+            config.openai_base_url,
+            config.request_timeout,
+            api_version=config.azure_api_version,
+        )
+        error_message = temp_client.classify_openai_error(str(e))
         raise HTTPException(status_code=500, detail=error_message)
 
 
@@ -162,9 +184,10 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "openai_api_configured": bool(config.openai_api_key),
+        "openai_api_configured": len(config.openai_api_keys) > 0,
         "api_key_valid": config.validate_api_key(),
         "client_api_key_validation": bool(config.anthropic_api_key),
+        "api_keys_count": len(config.openai_api_keys),
     }
 
 
@@ -173,7 +196,9 @@ async def test_connection():
     """Test API connectivity to OpenAI"""
     try:
         # Simple test request to verify API connectivity
-        test_response = await openai_client.create_chat_completion(
+        # Get a client with the next API key in round-robin fashion
+        client = get_openai_client()
+        test_response = await client.create_chat_completion(
             {
                 "model": config.small_model,
                 "messages": [{"role": "user", "content": "Hello"}],
@@ -216,7 +241,8 @@ async def root():
         "config": {
             "openai_base_url": config.openai_base_url,
             "max_tokens_limit": config.max_tokens_limit,
-            "api_key_configured": bool(config.openai_api_key),
+            "api_key_configured": len(config.openai_api_keys) > 0,
+            "api_keys_count": len(config.openai_api_keys),
             "client_api_key_validation": bool(config.anthropic_api_key),
             "big_model": config.big_model,
             "small_model": config.small_model,

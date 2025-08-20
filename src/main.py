@@ -16,7 +16,9 @@ def main():
         print("Usage: python src/main.py")
         print("")
         print("Required environment variables:")
-        print("  OPENAI_API_KEY - Your OpenAI API key")
+        print("  OPENAI_API_KEY - Your OpenAI API key(s) - supports multiple keys for load balancing")
+        print("                   Separate multiple keys with commas:")
+        print("                   OPENAI_API_KEY=\"sk-key1,sk-key2,sk-key3\"")
         print("")
         print("Optional environment variables:")
         print("  ANTHROPIC_API_KEY - Expected Anthropic API key for client validation")
@@ -43,6 +45,7 @@ def main():
     print("🚀 Claude-to-OpenAI API Proxy v1.0.0")
     print(f"✅ Configuration loaded successfully")
     print(f"   OpenAI Base URL: {config.openai_base_url}")
+    print(f"   API Keys Count: {len(config.openai_api_keys)}")
     print(f"   Big Model (opus): {config.big_model}")
     print(f"   Middle Model (sonnet): {config.middle_model}")
     print(f"   Small Model (haiku): {config.small_model}")
@@ -65,6 +68,7 @@ def main():
         "src.main:app",
         host=config.host,
         port=config.port,
+        workers=4,
         log_level=log_level,
         reload=False,
     )

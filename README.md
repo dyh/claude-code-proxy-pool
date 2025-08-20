@@ -1,8 +1,61 @@
+
+# 在原有功能上增加 轮询多个 key
+
+## 在 .env中，用逗号分隔 多个 key
+
+```bash
+OPENAI_API_KEY="ms-111111111111111,ms-22222222222222,ms-333333333333333,ms-4444444444444444"
+```
+
+## 在 src/main.py 中，workers=4，可以指定启动4个进程
+
+
+```python
+# Start server
+uvicorn.run(
+    "src.main:app",
+    host=config.host,
+    port=config.port,
+    workers=4,
+    log_level=log_level,
+    reload=False,
+)
+```
+
+## .env 文件内容
+
+```bash
+# 用逗号分隔 多个 key
+OPENAI_API_KEY="ms-111111111111111,ms-22222222222222,ms-333333333333333,ms-4444444444444444"
+
+ANTHROPIC_API_KEY=""
+
+OPENAI_BASE_URL="https://api-inference.modelscope.cn/v1/"
+
+BIG_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct"
+MIDDLE_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct"
+SMALL_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct"
+
+# Optional: Server settings
+HOST="0.0.0.0"
+PORT="8082"
+LOG_LEVEL="INFO"  
+# DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+MAX_TOKENS_LIMIT="65535"
+MIN_TOKENS_LIMIT="4096"
+REQUEST_TIMEOUT="90"
+MAX_RETRIES="2"
+```
+
+
+
+---
+
 # Claude Code Proxy
 
 A proxy server that enables **Claude Code** to work with OpenAI-compatible API providers. Convert Claude API requests to OpenAI API calls, allowing you to use various LLM providers through the Claude Code CLI.
 
-![Claude Code Proxy](demo.png)
 
 ## Features
 
