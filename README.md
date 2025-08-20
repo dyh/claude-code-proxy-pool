@@ -1,61 +1,104 @@
+# Claude Code Proxy Pool
 
-# 在原有功能上增加 轮询多个 key
+## 多 API Key 轮询增强版 | Multi-Key Edition
 
-## 在 .env中，用逗号分隔 多个 key
+Claude Code Proxy Pool 是对原项目 [claude-code-proxy](https://github.com/fuergaosi233/claude-code-proxy) 的改进版本，新增了支持多个 API Key 轮询的功能。通过在 `.env` 文件中配置多个 API Key，可以实现调用次数的叠加，突破单个 Key 的限制（例如免费 Key 的 500 次调用限制）。
+
+## 主要特性 | Features
+
+- **多 API Key 轮询** | Multi API Key Polling: 支持配置多个 API Key，系统会自动轮询使用，最大化调用次数。
+- **多进程支持** | Multi-Process Support: 支持配置多个工作进程，提升服务并发能力。
+- **兼容原项目** | Compatible with Original Project: 保留原项目的所有功能和配置方式，易于上手。
+
+## 快速开始 | Quick Start
+
+### 1. 配置多个 API Key | Configure Multiple API Keys
+
+在 `.env` 文件中，通过逗号（,）分隔多个 API Key。目前支持 `OPENAI_API_KEY` 和 `ANTHROPIC_API_KEY` 的配置。
+
+示例 | Example:
 
 ```bash
 OPENAI_API_KEY="ms-111111111111111,ms-22222222222222,ms-333333333333333,ms-4444444444444444"
+ANTHROPIC_API_KEY=""
 ```
 
-## 在 src/main.py 中，workers=4，可以指定启动4个进程
+> 注意：系统会自动轮询使用配置的多个 Key，无需额外设置。
 
+> Note: The system will automatically poll the configured keys without additional setup.
+
+### 2. 配置多进程服务 | Configure Multi-Process Service
+
+在 `src/main.py` 中，可以通过 `workers` 参数指定启动的工作进程数量，以提升服务处理能力。
+
+示例代码 | Example code:
 
 ```python
-# Start server
+# 启动服务器 | Start server
 uvicorn.run(
     "src.main:app",
     host=config.host,
     port=config.port,
-    workers=4,
+    workers=4,  # 指定启动 4 个工作进程 | Specify 4 worker processes
     log_level=log_level,
     reload=False,
 )
 ```
 
-## .env 文件内容
+## 配置文件说明 (.env) | Configuration File (.env)
+
+以下是 `.env` 文件的完整示例及参数说明：
+
+Below is a complete example of the `.env` file and parameter descriptions:
 
 ```bash
-# 用逗号分隔 多个 key
+# API Key 配置，支持多个 Key 用逗号分隔 | API Key configuration, supports multiple keys separated by commas
 OPENAI_API_KEY="ms-111111111111111,ms-22222222222222,ms-333333333333333,ms-4444444444444444"
-
 ANTHROPIC_API_KEY=""
 
+# API 基础地址 | API base URL
 OPENAI_BASE_URL="https://api-inference.modelscope.cn/v1/"
 
+# 模型配置 | Model configuration
 BIG_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct"
 MIDDLE_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct"
 SMALL_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct"
 
-# Optional: Server settings
-HOST="0.0.0.0"
-PORT="8082"
-LOG_LEVEL="INFO"  
-# DEBUG, INFO, WARNING, ERROR, CRITICAL
-
-MAX_TOKENS_LIMIT="65535"
-MIN_TOKENS_LIMIT="4096"
-REQUEST_TIMEOUT="90"
-MAX_RETRIES="2"
+# 可选：服务器设置 | Optional: Server settings
+HOST="0.0.0.0"               # 服务器主机地址 | Server host address
+PORT="8082"                  # 服务器端口 | Server port
+LOG_LEVEL="INFO"             # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL | Log level
+MAX_TOKENS_LIMIT="65535"     # 最大 Token 限制 | Maximum token limit
+MIN_TOKENS_LIMIT="4096"      # 最小 Token 限制 | Minimum token limit
+REQUEST_TIMEOUT="90"         # 请求超时时间（秒） | Request timeout (seconds)
+MAX_RETRIES="2"              # 最大重试次数 | Maximum retry attempts
 ```
 
+> 提示：根据你的需求调整上述参数，确保 API Key 和模型配置正确无误。
 
+> Tip: Adjust the above parameters according to your needs, ensuring that the API Key and model configuration are correct.
+
+## 贡献与支持 | Contribution & Support
+
+本项目是基于 MIT 许可证的开源项目，欢迎社区贡献代码或提出改进建议。
+
+This project is an open-source project licensed under the MIT License. Community contributions and improvement suggestions are welcome.
+
+如果有问题或功能建议，请在 GitHub 仓库提交 Issue。
+
+If you have any issues or feature suggestions, please submit an Issue in the GitHub repository.
+
+## 致谢 | Acknowledgements
+
+感谢原作者 [fuergaosi233](https://github.com/fuergaosi233) 提供的优秀项目 claude-code-proxy，本项目在其基础上进行了增强。
+
+Thanks to the original author [fuergaosi233](https://github.com/fuergaosi233) for providing the excellent claude-code-proxy project, which this project enhances.
 
 ---
 
 # Claude Code Proxy
 
 A proxy server that enables **Claude Code** to work with OpenAI-compatible API providers. Convert Claude API requests to OpenAI API calls, allowing you to use various LLM providers through the Claude Code CLI.
-
 
 ## Features
 
