@@ -10,12 +10,15 @@ logger = logging.getLogger(__name__)
 
 
 def convert_claude_to_openai(
-    claude_request: ClaudeMessagesRequest, model_manager
+    claude_request: ClaudeMessagesRequest, model_manager, selected_model: str = None
 ) -> Dict[str, Any]:
     """Convert Claude API request format to OpenAI format."""
 
     # Map model
-    openai_model = model_manager.map_claude_model_to_openai(claude_request.model)
+    if selected_model:
+        openai_model = selected_model
+    else:
+        openai_model = model_manager.map_claude_model_to_openai(claude_request.model)
 
     # Convert messages
     openai_messages = []

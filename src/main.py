@@ -38,7 +38,7 @@ def main():
         print("")
         print("Model mapping:")
         print(f"  Claude haiku models -> {config.small_model}")
-        print(f"  Claude sonnet/opus models -> {config.big_model}")
+        print(f"  Claude models -> {config.get_next_big_model()}")
         sys.exit(0)
 
     # Configuration summary
@@ -46,7 +46,7 @@ def main():
     print(f"✅ Configuration loaded successfully")
     print(f"   OpenAI Base URL: {config.openai_base_url}")
     print(f"   API Keys Count: {len(config.openai_api_keys)}")
-    print(f"   Big Model (opus): {config.big_model}")
+    print(f"   Big Models (opus): {config.big_models}")
     print(f"   Middle Model (sonnet): {config.middle_model}")
     print(f"   Small Model (haiku): {config.small_model}")
     print(f"   Max Tokens Limit: {config.max_tokens_limit}")
@@ -68,7 +68,7 @@ def main():
         "src.main:app",
         host=config.host,
         port=config.port,
-        workers=4,
+        workers=1,
         log_level=log_level,
         reload=False,
     )

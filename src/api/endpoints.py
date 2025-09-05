@@ -17,7 +17,7 @@ from src.core.model_manager import model_manager
 
 router = APIRouter()
 
-# Create a client factory to generate clients with round-robin API keys
+# Create a client factory to generate clients with prioritized polling
 def get_openai_client():
     """Get an OpenAI client with the next API key in round-robin fashion"""
     api_key = config.get_next_api_key()
@@ -25,8 +25,16 @@ def get_openai_client():
         api_key,
         config.openai_base_url,
         config.request_timeout,
-        api_version=config.azure_api_version,
     )
+
+def get_openai_client_prioritized():
+    """Get an OpenAI client with prioritized polling: API keys first, then models"""
+    api_key, model = config.get_next_api_key_and_model()
+    return OpenAIClient(
+        api_key,
+        config.openai_base_url,
+        config.request_timeout,
+    ), model
 
 async def validate_api_key(x_api_key: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
     """Validate the client's API key from either x-api-key header or Authorization header."""
@@ -60,8 +68,11 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
         # Generate unique request ID for cancellation tracking
         request_id = str(uuid.uuid4())
 
-        # Convert Claude request to OpenAI format
-        openai_request = convert_claude_to_openai(request, model_manager)
+        # Get client and model using prioritized polling (API keys first, then models)
+        client, selected_model = get_openai_client_prioritized()
+
+        # Convert Claude request to OpenAI format with the selected model
+        openai_request = convert_claude_to_openai(request, model_manager, selected_model)
 
         # Check if client disconnected before processing
         if await http_request.is_disconnected():
@@ -70,8 +81,7 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
         if request.stream:
             # Streaming response - wrap in error handling
             try:
-                # Get a client with the next API key in round-robin fashion
-                client = get_openai_client()
+                # Client and model already obtained via prioritized polling
                 openai_stream = client.create_chat_completion_stream(
                     openai_request, request_id
                 )
@@ -103,7 +113,6 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
                     config.openai_api_keys[0],
                     config.openai_base_url,
                     config.request_timeout,
-                    api_version=config.azure_api_version,
                 )
                 error_message = temp_client.classify_openai_error(e.detail)
                 error_response = {
@@ -113,8 +122,7 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
                 return JSONResponse(status_code=e.status_code, content=error_response)
         else:
             # Non-streaming response
-            # Get a client with the next API key in round-robin fashion
-            client = get_openai_client()
+            # Client and model already obtained via prioritized polling
             openai_response = await client.create_chat_completion(
                 openai_request, request_id
             )
@@ -134,7 +142,6 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
             config.openai_api_keys[0],
             config.openai_base_url,
             config.request_timeout,
-            api_version=config.azure_api_version,
         )
         error_message = temp_client.classify_openai_error(str(e))
         raise HTTPException(status_code=500, detail=error_message)
@@ -178,57 +185,96 @@ async def count_tokens(request: ClaudeTokenCountRequest, _: None = Depends(valid
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "openai_api_configured": len(config.openai_api_keys) > 0,
-        "api_key_valid": config.validate_api_key(),
-        "client_api_key_validation": bool(config.anthropic_api_key),
-        "api_keys_count": len(config.openai_api_keys),
-    }
-
-
-@router.get("/test-connection")
-async def test_connection():
-    """Test API connectivity to OpenAI"""
+@router.get("/validate-keys")
+async def validate_api_keys():
+    """Validate all configured API keys"""
     try:
-        # Simple test request to verify API connectivity
-        # Get a client with the next API key in round-robin fashion
-        client = get_openai_client()
-        test_response = await client.create_chat_completion(
-            {
-                "model": config.small_model,
-                "messages": [{"role": "user", "content": "Hello"}],
-                "max_tokens": 5,
-            }
-        )
-
-        return {
-            "status": "success",
-            "message": "Successfully connected to OpenAI API",
-            "model_used": config.small_model,
-            "timestamp": datetime.now().isoformat(),
-            "response_id": test_response.get("id", "unknown"),
-        }
-
-    except Exception as e:
-        logger.error(f"API connectivity test failed: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "failed",
-                "error_type": "API Error",
-                "message": str(e),
+        # Only validate if using ModelScope
+        if not config.is_modelscope_endpoint():
+            return {
+                "status": "skipped",
+                "message": "API key validation is only available for ModelScope endpoints",
+                "endpoint": config.openai_base_url,
                 "timestamp": datetime.now().isoformat(),
-                "suggestions": [
-                    "Check your OPENAI_API_KEY is valid",
-                    "Verify your API key has the necessary permissions",
-                    "Check if you have reached rate limits",
-                ],
+            }
+        
+        # Import validation function
+        from src.core.modelscope_validator import validate_modelscope_keys
+        
+        # Validate all keys
+        validation_results = await validate_modelscope_keys(config.openai_api_keys, detailed=True)
+        
+        # Format response - now includes all keys for debugging
+        response = {
+            "status": "completed",
+            "timestamp": datetime.now().isoformat(),
+            "summary": {
+                "total_keys": validation_results["total_keys"],
+                "valid_keys": validation_results["valid_keys"], 
+                "invalid_keys": validation_results["invalid_keys"],
+                "valid_rate": validation_results["valid_rate"],
+                "api_keys_working": len(validation_results.get("all_keys", config.openai_api_keys)),
+                "all_keys_configured": len(config.openai_api_keys),  # Original count from env
             },
+            "valid_keys_list": [],
+            "invalid_keys_list": [],
+            "recommendations": []
+        }
+        
+        # Process all validation results to show complete keys
+        all_results = validation_results.get("results", [])
+        
+        for result in all_results:
+            key_index = result["key_index"]
+            original_key = config.openai_api_keys[key_index]
+            
+            if result["valid"]:
+                response["valid_keys_list"].append({
+                    "index": key_index,
+                    "key": original_key,
+                    "key_preview": original_key[:15] + "...",
+                    "message": result["message"],
+                    "reason": result["details"].get("reason", "success")
+                })
+            else:
+                response["invalid_keys_list"].append({
+                    "index": key_index,
+                    "key": original_key,  # Complete invalid key for debugging
+                    "key_preview": original_key[:15] + "...",
+                    "message": result["message"],
+                    "reason": result["details"].get("reason", "unknown")
+                })
+        
+        # Add recommendations
+        if validation_results["invalid_keys"] > 0:
+            response["recommendations"].extend([
+                "Remove or replace invalid API keys from your configuration",
+                "Check if keys have been revoked in ModelScope user center",
+                "Verify keys have the necessary permissions for inference"
+            ])
+        
+        if validation_results["total_keys"] == 0:
+            response["recommendations"].append("No API keys configured. Add OPENAI_API_KEY environment variable")
+        elif validation_results["valid_keys"] == 0:
+            response["recommendations"].append("🚨 CRITICAL: No valid API keys found! Service may not work correctly.")
+            response["status"] = "failed"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"API key validation failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Validation process failed: {str(e)}",
+                "timestamp": datetime.now().isoformat(),
+                "recommendations": [
+                    "Check server logs for detailed error information",
+                    "Ensure ModelScope library is properly installed (pip install modelscope)",
+                    "Verify network connectivity to ModelScope services"
+                ]
+            }
         )
 
 
@@ -246,11 +292,12 @@ async def root():
             "client_api_key_validation": bool(config.anthropic_api_key),
             "big_model": config.big_model,
             "small_model": config.small_model,
+            "modelscope_api_validation": config.is_modelscope_endpoint(),
+            "api_validation_enabled": config.enable_api_validation,
         },
         "endpoints": {
             "messages": "/v1/messages",
             "count_tokens": "/v1/messages/count_tokens",
-            "health": "/health",
-            "test_connection": "/test-connection",
+            "validate_keys": "/validate-keys",
         },
     }

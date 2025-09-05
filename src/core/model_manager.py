@@ -1,11 +1,12 @@
 from src.core.config import config
+from src.core.logging import logger
 
 class ModelManager:
     def __init__(self, config):
         self.config = config
     
     def map_claude_model_to_openai(self, claude_model: str) -> str:
-        """Map Claude model names to OpenAI model names based on BIG/SMALL pattern"""
+        """Map Claude model names to OpenAI model names using BIG model cycle"""
         # If it's already an OpenAI model, return as-is
         if claude_model.startswith("gpt-") or claude_model.startswith("o1-"):
             return claude_model
@@ -15,16 +16,8 @@ class ModelManager:
             claude_model.startswith("deepseek-")):
             return claude_model
         
-        # Map based on model naming patterns
-        model_lower = claude_model.lower()
-        if 'haiku' in model_lower:
-            return self.config.small_model
-        elif 'sonnet' in model_lower:
-            return self.config.middle_model
-        elif 'opus' in model_lower:
-            return self.config.big_model
-        else:
-            # Default to big model for unknown models
-            return self.config.big_model
+        # Use the next model in the BIG_MODEL cycle (no differentiation)
+        selected_model = self.config.get_next_big_model()
+        return selected_model
 
 model_manager = ModelManager(config)
