@@ -42,7 +42,6 @@ pydantic_core
 Pygments
 pytest
 pytest-asyncio
-python-dotenv
 python-multipart
 PyYAML
 requests

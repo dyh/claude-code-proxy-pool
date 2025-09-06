@@ -20,14 +20,18 @@ class OpenAIClient:
             timeout=timeout
         )
         self.active_requests: Dict[str, asyncio.Event] = {}
+        self._lock = asyncio.Lock()  # Use async lock for async context
     
     async def create_chat_completion(self, request: Dict[str, Any], request_id: Optional[str] = None) -> Dict[str, Any]:
         """Send chat completion to OpenAI API with cancellation support."""
         
         # Create cancellation token if request_id provided
+        cancel_event = None
+        cancel_task = None
         if request_id:
             cancel_event = asyncio.Event()
-            self.active_requests[request_id] = cancel_event
+            async with self._lock:
+                self.active_requests[request_id] = cancel_event
         
         try:
             # Create task that can be cancelled
@@ -54,6 +58,10 @@ class OpenAIClient:
                 # Check if request was cancelled
                 if cancel_task in done:
                     completion_task.cancel()
+                    try:
+                        await completion_task
+                    except asyncio.CancelledError:
+                        pass
                     raise HTTPException(status_code=499, detail="Request cancelled by client")
                 
                 completion = await completion_task
@@ -72,21 +80,34 @@ class OpenAIClient:
         except APIError as e:
             status_code = getattr(e, 'status_code', 500)
             raise HTTPException(status_code=status_code, detail=self.classify_openai_error(str(e)))
+        except asyncio.CancelledError as e:
+            raise HTTPException(status_code=499, detail="Request cancelled")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
         
         finally:
             # Clean up active request tracking
-            if request_id and request_id in self.active_requests:
-                del self.active_requests[request_id]
+            if request_id:
+                async with self._lock:
+                    self.active_requests.pop(request_id, None)
+            
+            # Clean up any remaining tasks
+            if cancel_task and not cancel_task.done():
+                cancel_task.cancel()
+                try:
+                    await cancel_task
+                except asyncio.CancelledError:
+                    pass
     
     async def create_chat_completion_stream(self, request: Dict[str, Any], request_id: Optional[str] = None) -> AsyncGenerator[str, None]:
         """Send streaming chat completion to OpenAI API with cancellation support."""
         
         # Create cancellation token if request_id provided
+        cancel_event = None
         if request_id:
             cancel_event = asyncio.Event()
-            self.active_requests[request_id] = cancel_event
+            async with self._lock:
+                self.active_requests[request_id] = cancel_event
         
         try:
             # Ensure stream is enabled
@@ -98,10 +119,11 @@ class OpenAIClient:
             # Create the streaming completion
             streaming_completion = await self.client.chat.completions.create(**request)
             
+            cancel_event_local = cancel_event
             async for chunk in streaming_completion:
-                # Check for cancellation before yielding each chunk
-                if request_id and request_id in self.active_requests:
-                    if self.active_requests[request_id].is_set():
+                # Check for cancellation before yielding each chunk - avoid concurrent dict access
+                if request_id and cancel_event_local is not None:
+                    if cancel_event_local.is_set():
                         raise HTTPException(status_code=499, detail="Request cancelled by client")
                 
                 # Convert chunk to SSE format matching original HTTP client format
@@ -121,13 +143,16 @@ class OpenAIClient:
         except APIError as e:
             status_code = getattr(e, 'status_code', 500)
             raise HTTPException(status_code=status_code, detail=self.classify_openai_error(str(e)))
+        except asyncio.CancelledError as e:
+            raise HTTPException(status_code=499, detail="Request cancelled")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
         
         finally:
             # Clean up active request tracking
-            if request_id and request_id in self.active_requests:
-                del self.active_requests[request_id]
+            if request_id:
+                async with self._lock:
+                    self.active_requests.pop(request_id, None)
 
     def classify_openai_error(self, error_detail: Any) -> str:
         """Provide specific error guidance for common OpenAI API issues."""
@@ -156,9 +181,10 @@ class OpenAIClient:
         # Default: return original message
         return str(error_detail)
     
-    def cancel_request(self, request_id: str) -> bool:
+    async def cancel_request(self, request_id: str) -> bool:
         """Cancel an active request by request_id."""
-        if request_id in self.active_requests:
-            self.active_requests[request_id].set()
-            return True
+        async with self._lock:
+            if request_id in self.active_requests:
+                self.active_requests[request_id].set()
+                return True
         return False

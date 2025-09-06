@@ -176,6 +176,7 @@ class Config:
     
     def validate_modelscope_keys_sync(self) -> dict:
         """Synchronously validate ModelScope API keys and return detailed results"""
+        loop = None
         try:
             # Create new event loop for this thread
             loop = asyncio.new_event_loop()
@@ -235,7 +236,17 @@ class Config:
             }
             return fallback_result
         finally:
-            loop.close()
+            if loop is not None:
+                try:
+                    # Properly close all pending tasks before closing the loop
+                    pending = asyncio.all_tasks(loop)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                except:
+                    pass
+                loop.close()
     
     async def validate_modelscope_keys_async(self) -> dict:
         """Asynchronously validate ModelScope API keys and return detailed results"""
@@ -274,7 +285,7 @@ class Config:
 
 try:
     config = Config()
-    print(f" Configuration loaded: API_KEY={'*' * 20}..., BASE_URL='{config.openai_base_url}'")
+    print(f"Configuration loaded: API_KEY={'*' * 20}..., BASE_URL='{config.openai_base_url}'")
 except Exception as e:
     print(f"=4 Configuration Error: {e}")
     sys.exit(1)

@@ -113,7 +113,12 @@ async def convert_openai_streaming_to_claude(
                             continue
                     except json.JSONDecodeError as e:
                         logger.warning(
-                            f"Failed to parse chunk: {chunk_data}, error: {e}"
+                            f"Failed to parse chunk: {chunk_data[:200]}, error: {str(e)[:100]}"
+                        )
+                        continue
+                    except Exception as e:
+                        logger.error(
+                            f"Unexpected error parsing chunk: {str(e)[:100]}"
                         )
                         continue
 
@@ -271,7 +276,12 @@ async def convert_openai_streaming_to_claude_with_cancellation(
                             continue
                     except json.JSONDecodeError as e:
                         logger.warning(
-                            f"Failed to parse chunk: {chunk_data}, error: {e}"
+                            f"Failed to parse chunk: {chunk_data[:200]}, error: {str(e)[:100]}"
+                        )
+                        continue
+                    except Exception as e:
+                        logger.error(
+                            f"Unexpected error parsing chunk: {str(e)[:100]}"
                         )
                         continue
 

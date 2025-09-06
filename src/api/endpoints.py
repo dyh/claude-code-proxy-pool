@@ -176,7 +176,11 @@ async def count_tokens(request: ClaudeTokenCountRequest, _: None = Depends(valid
                         total_chars += len(block.text)
 
         # Rough estimation: 4 characters per token
-        estimated_tokens = max(1, total_chars // 4)
+        # Ensure at least 1 token even for empty content
+        if total_chars <= 0:
+            estimated_tokens = 0
+        else:
+            estimated_tokens = max(1, total_chars // 4)
 
         return {"input_tokens": estimated_tokens}
 
@@ -231,7 +235,6 @@ async def validate_api_keys():
             if result["valid"]:
                 response["valid_keys_list"].append({
                     "index": key_index,
-                    "key": original_key,
                     "key_preview": original_key[:15] + "...",
                     "message": result["message"],
                     "reason": result["details"].get("reason", "success")
@@ -239,7 +242,6 @@ async def validate_api_keys():
             else:
                 response["invalid_keys_list"].append({
                     "index": key_index,
-                    "key": original_key,  # Complete invalid key for debugging
                     "key_preview": original_key[:15] + "...",
                     "message": result["message"],
                     "reason": result["details"].get("reason", "unknown")
@@ -290,8 +292,7 @@ async def root():
             "api_key_configured": len(config.openai_api_keys) > 0,
             "api_keys_count": len(config.openai_api_keys),
             "client_api_key_validation": bool(config.anthropic_api_key),
-            "big_model": config.big_model,
-            "small_model": config.small_model,
+            "big_models": config.big_models,
             "modelscope_api_validation": config.is_modelscope_endpoint(),
             "api_validation_enabled": config.enable_api_validation,
         },
