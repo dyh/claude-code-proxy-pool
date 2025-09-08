@@ -250,7 +250,8 @@ async def convert_openai_streaming_to_claude_with_cancellation(
             if await http_request.is_disconnected():
                 logger.info(f"Client disconnected, cancelling request {request_id}")
                 openai_client.cancel_request(request_id)
-                break
+                # Return early to avoid sending final events after disconnection
+                return
 
             if line.strip():
                 if line.startswith("data: "):
@@ -369,7 +370,17 @@ async def convert_openai_streaming_to_claude_with_cancellation(
             yield f"event: error\ndata: {json.dumps(error_event, ensure_ascii=False)}\n\n"
             return
         else:
-            raise
+            # For other HTTP exceptions, yield an error event instead of raising
+            logger.error(f"HTTP error during streaming: {e.detail}")
+            error_event = {
+                "type": "error",
+                "error": {
+                    "type": "api_error",
+                    "message": str(e.detail),
+                },
+            }
+            yield f"event: error\ndata: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+            return
     except Exception as e:
         # Handle any streaming errors gracefully
         logger.error(f"Streaming error: {e}")

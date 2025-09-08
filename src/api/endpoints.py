@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime
 import uuid
+import json
 from typing import Optional
 
 from src.core.config import config
@@ -115,11 +116,18 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
                     config.request_timeout,
                 )
                 error_message = temp_client.classify_openai_error(e.detail)
-                error_response = {
-                    "type": "error",
-                    "error": {"type": "api_error", "message": error_message},
-                }
-                return JSONResponse(status_code=e.status_code, content=error_response)
+                # For streaming errors, return a StreamingResponse with error event
+                # instead of JSONResponse to avoid "response already started" error
+                return StreamingResponse(
+                    iter([f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'type': 'api_error', 'message': error_message}}, ensure_ascii=False)}\n\n"]),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Headers": "*",
+                    },
+                )
         else:
             # Non-streaming response
             # Client and model already obtained via prioritized polling
