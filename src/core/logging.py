@@ -12,7 +12,7 @@ if log_level not in valid_levels:
 # Logging Configuration
 logging.basicConfig(
     level=getattr(logging, log_level),
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s',
 )
 logger = logging.getLogger(__name__)
 

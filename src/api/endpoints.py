@@ -29,7 +29,7 @@ def get_openai_client():
     )
 
 def get_openai_client_prioritized():
-    """Get an OpenAI client with prioritized polling: API keys first, then models"""
+    """Get an OpenAI client with prioritized polling: models first, then API keys"""
     api_key, model = config.get_next_api_key_and_model()
     return OpenAIClient(
         api_key,
@@ -69,7 +69,7 @@ async def create_message(request: ClaudeMessagesRequest, http_request: Request, 
         # Generate unique request ID for cancellation tracking
         request_id = str(uuid.uuid4())
 
-        # Get client and model using prioritized polling (API keys first, then models)
+        # Get client and model using prioritized polling (models first, then API keys)
         client, selected_model = get_openai_client_prioritized()
 
         # Convert Claude request to OpenAI format with the selected model

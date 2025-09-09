@@ -195,13 +195,15 @@ async def convert_openai_streaming_to_claude(
 
     except Exception as e:
         # Handle any streaming errors gracefully
-        logger.error(f"Streaming error: {e}")
+        logger.error(f"Streaming error: {str(e)}")
+        logger.error(f"Full streaming exception details: {repr(e)}")
+        logger.error(f"Exception type: {type(e).__name__}")
         import traceback
 
         logger.error(traceback.format_exc())
         error_event = {
             "type": "error",
-            "error": {"type": "api_error", "message": f"Streaming error: {str(e)}"},
+            "error": {"type": "api_error", "message": f"Streaming error: {str(e)} - {type(e).__name__}"},
         }
         yield f"event: error\ndata: {json.dumps(error_event, ensure_ascii=False)}\n\n"
         return
@@ -372,6 +374,10 @@ async def convert_openai_streaming_to_claude_with_cancellation(
         else:
             # For other HTTP exceptions, yield an error event instead of raising
             logger.error(f"HTTP error during streaming: {e.detail}")
+            logger.error(f"Full HTTP exception details: {repr(e)}")
+            logger.error(f"HTTP status code: {e.status_code}")
+            import traceback
+            logger.error(traceback.format_exc())
             error_event = {
                 "type": "error",
                 "error": {
@@ -383,13 +389,15 @@ async def convert_openai_streaming_to_claude_with_cancellation(
             return
     except Exception as e:
         # Handle any streaming errors gracefully
-        logger.error(f"Streaming error: {e}")
+        logger.error(f"Streaming error: {str(e)}")
+        logger.error(f"Full streaming exception details: {repr(e)}")
+        logger.error(f"Exception type: {type(e).__name__}")
         import traceback
 
         logger.error(traceback.format_exc())
         error_event = {
             "type": "error",
-            "error": {"type": "api_error", "message": f"Streaming error: {str(e)}"},
+            "error": {"type": "api_error", "message": f"Streaming error: {str(e)} - {type(e).__name__}"},
         }
         yield f"event: error\ndata: {json.dumps(error_event, ensure_ascii=False)}\n\n"
         return

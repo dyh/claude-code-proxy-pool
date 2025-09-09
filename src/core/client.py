@@ -1,10 +1,12 @@
 import asyncio
 import json
+import traceback
 from fastapi import HTTPException
 from typing import Optional, AsyncGenerator, Dict, Any
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai._exceptions import APIError, RateLimitError, AuthenticationError, BadRequestError
+from src.core.logging import logger
 
 class OpenAIClient:
     """Async OpenAI client with cancellation support."""
@@ -72,18 +74,38 @@ class OpenAIClient:
             return completion.model_dump()
         
         except AuthenticationError as e:
+            logger.error(f"Authentication error in create_chat_completion: {str(e)}")
+            logger.error(traceback.format_exc())
             raise HTTPException(status_code=401, detail=self.classify_openai_error(str(e)))
         except RateLimitError as e:
+            logger.error(f"Rate limit error in create_chat_completion: {str(e)}")
+            logger.error(traceback.format_exc())
             raise HTTPException(status_code=429, detail=self.classify_openai_error(str(e)))
         except BadRequestError as e:
+            logger.error(f"Bad request error in create_chat_completion: {str(e)}")
+            logger.error(traceback.format_exc())
             raise HTTPException(status_code=400, detail=self.classify_openai_error(str(e)))
         except APIError as e:
             status_code = getattr(e, 'status_code', 500)
+            logger.error(f"API error in create_chat_completion (status {status_code}): {str(e)}")
+            logger.error(traceback.format_exc())
             raise HTTPException(status_code=status_code, detail=self.classify_openai_error(str(e)))
         except asyncio.CancelledError as e:
+            logger.info("Request cancelled in create_chat_completion")
             raise HTTPException(status_code=499, detail="Request cancelled")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+            error_type = type(e).__name__
+            logger.error(f"Unexpected error in create_chat_completion: {str(e)}")
+            logger.error(f"Request details: {request}")
+            logger.error(f"Full exception details: {repr(e)}")
+            logger.error(traceback.format_exc())
+            
+            # 特殊处理超时错误
+            if "ReadTimeout" in error_type or "TimeoutError" in error_type:
+                error_msg = f"Request timeout: ModelScope API response took too long. Try reducing request complexity or increase timeout setting."
+                raise HTTPException(status_code=504, detail=error_msg)
+            else:
+                raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)} - {error_type}")
         
         finally:
             # Clean up active request tracking
@@ -146,7 +168,18 @@ class OpenAIClient:
         except asyncio.CancelledError as e:
             raise HTTPException(status_code=499, detail="Request cancelled")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+            error_type = type(e).__name__
+            logger.error(f"Unexpected error in create_chat_completion_stream: {str(e)}")
+            logger.error(f"Request details: {request}")
+            logger.error(f"Full exception details: {repr(e)}")
+            logger.error(traceback.format_exc())
+            
+            # 特殊处理超时错误
+            if "ReadTimeout" in error_type or "TimeoutError" in error_type:
+                error_msg = f"Streaming timeout: ModelScope API response took too long. Try reducing request complexity or increase timeout setting."
+                raise HTTPException(status_code=504, detail=error_msg)
+            else:
+                raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)} - {error_type}")
         
         finally:
             # Clean up active request tracking

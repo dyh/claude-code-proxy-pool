@@ -79,7 +79,7 @@ class Config:
         self.middle_model = self.big_models[0]  # Default to first for backward compatibility
         self.small_model = self.big_models[0]  # Default to first for backward compatibility
         
-        # Initialize indices for prioritized polling (API keys first, then models)
+        # Initialize indices for prioritized polling (models first, then API keys)
         self.current_key_index = 0
         self.current_model_index = 0
         
@@ -133,21 +133,21 @@ class Config:
     def get_next_api_key_and_model(self):
         """
         Get the next API key and model combination using prioritized polling:
-        First cycle through all API keys for current model, then move to next model
+        First cycle through all models for current API key, then move to next API key
         """
-        # Get current API key
-        api_key = self.openai_api_keys[self.current_key_index]
-        
         # Get current model
         model = self.big_models[self.current_model_index]
         
-        # Move to next API key
-        self.current_key_index += 1
+        # Get current API key
+        api_key = self.openai_api_keys[self.current_key_index]
         
-        # If we've cycled through all API keys, move to next model and reset key index
-        if self.current_key_index >= len(self.openai_api_keys):
-            self.current_key_index = 0
-            self.current_model_index = (self.current_model_index + 1) % len(self.big_models)
+        # Move to next model
+        self.current_model_index += 1
+        
+        # If we've cycled through all models, move to next API key and reset model index
+        if self.current_model_index >= len(self.big_models):
+            self.current_model_index = 0
+            self.current_key_index = (self.current_key_index + 1) % len(self.openai_api_keys)
         
         return api_key, model
         
